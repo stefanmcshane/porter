@@ -127,6 +127,10 @@ func (c *UpgradeReleaseHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 
 	rel, releaseErr := c.Repo().Release().ReadRelease(cluster.ID, helmRelease.Name, helmRelease.Namespace)
 
+	if rel == nil {
+		rel, releaseErr = CreateReleaseFromHelmRelease(c.Config(), cluster.ProjectID, cluster.ID, helmRelease)
+	}
+
 	var notifConf *types.NotificationConfig
 	notifConf = nil
 	if rel != nil && rel.NotificationConfig != 0 {

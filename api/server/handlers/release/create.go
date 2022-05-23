@@ -134,7 +134,7 @@ func (c *CreateReleaseHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	release, err := createReleaseFromHelmRelease(c.Config(), cluster.ProjectID, cluster.ID, helmRelease)
+	release, err := CreateReleaseFromHelmRelease(c.Config(), cluster.ProjectID, cluster.ID, helmRelease)
 
 	if err != nil {
 		c.HandleAPIError(w, r, apierrors.NewErrInternal(err))
@@ -202,7 +202,8 @@ func (c *CreateReleaseHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	))
 }
 
-func createReleaseFromHelmRelease(
+// Populates a Porter release from a helm release
+func CreateReleaseFromHelmRelease(
 	config *config.Config,
 	projectID, clusterID uint,
 	helmRelease *release.Release,
