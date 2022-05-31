@@ -13,6 +13,7 @@ import ImageSelector from "components/image-selector/ImageSelector";
 import ActionConfEditor from "components/repo-selector/ActionConfEditor";
 import SaveButton from "components/SaveButton";
 import { ActionConfigType } from "shared/types";
+import ActionConfigForm from "components/action-config-form";
 
 type PropsType = RouteComponentProps & {
   templateName: string;
@@ -74,6 +75,13 @@ class SourcePage extends Component<PropsType, StateType> {
               </BlockDescription>
             </Block>
           )}
+          <Block onClick={() => setSourceType("repo-v2")}>
+            <BlockIcon src="https://git-scm.com/images/logos/downloads/Git-Icon-1788C.png" />
+            <BlockTitle>Git Repository v2</BlockTitle>
+            <BlockDescription>
+              Deploy using source from a Git repo.
+            </BlockDescription>
+          </Block>
           <Block onClick={() => setSourceType("registry")}>
             <BlockIcon src="https://cdn4.iconfinder.com/data/icons/logos-and-brands/512/97_Docker_logo_logos-512.png" />
             <BlockTitle>Docker Registry</BlockTitle>
@@ -124,6 +132,74 @@ class SourcePage extends Component<PropsType, StateType> {
           <br />
         </StyledSourceBox>
       );
+    }
+
+    if (sourceType === "repo-v2") {
+      return (
+        <StyledSourceBox>
+          <CloseButton
+            onClick={() => {
+              setSourceType("");
+              setDockerfilePath("");
+              setFolderPath("");
+              setProcfilePath("");
+              setProcfileProcess("");
+            }}
+          >
+            <CloseButtonImg src={close} />
+          </CloseButton>
+          <Subtitle>
+            Provide a repo folder to use as source.
+            <Highlight
+              onClick={() => setCurrentModal("AccountSettingsModal", {})}
+            >
+              Manage Git repos
+            </Highlight>
+            <Required>*</Required>
+          </Subtitle>
+          <DarkMatter antiHeight="-4px" />
+          <ActionConfigForm />
+          {/* <ActionConfEditor
+          actionConfig={actionConfig}
+          branch={branch}
+          setActionConfig={(actionConfig: ActionConfigType) => {
+            setActionConfig((currentActionConfig: ActionConfigType) => ({
+              ...currentActionConfig,
+              ...actionConfig,
+            }));
+            setImageUrl(actionConfig.image_repo_uri);
+            
+          
+          procfileProcess={procfileProcess}
+          setProcfileProcess={(procfileProcess: string) => {
+            setProcfileProcess(procfileProcess);
+            setValuesToOverride((v: any) => ({
+              ...v,
+              "container.command": procfileProcess || "",
+              showStartCommand: !procfileProcess,
+            }));
+          }}
+          setBranch={setBranch}
+          setDockerfilePath={setDockerfilePath}
+          setProcfilePath={setProcfilePath}
+          procfilePath={procfilePath}
+          dockerfilePath={dockerfilePath}
+          folderPath={folderPath}
+          setFolderPath={setFolderPath}
+          reset={() => {
+            setActionConfig({ ...defaultActionConfig });
+            setBranch("");
+            setDockerfilePath(null);
+            setFolderPath(null);
+          }}
+          setSelectedRegistry={setSelectedRegistry}
+          selectedRegistry={selectedRegistry}
+          setBuildConfig={setBuildConfig}
+        /> */}
+          <br />
+        </StyledSourceBox>
+      );
+      return;
     }
 
     // Display repo selector

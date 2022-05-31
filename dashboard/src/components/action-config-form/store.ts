@@ -1,40 +1,14 @@
-import _ from "lodash";
-import React from "react";
+import { cloneDeep, get, isEmpty, set } from "lodash";
 import api from "shared/api";
 import { proxy } from "valtio";
-
-type GitProvider =
-  | {
-      provider: "github";
-      name: string;
-      app_id: number;
-    }
-  | {
-      provider: "gitlab";
-      instance_url: string;
-      integration_id: number;
-    };
-
-type GitRepository = {
-  name: string;
-  kind: "github" | "gitlab";
-};
-
-type RepoStore = {
-  [id: number]: GitRepository[];
-};
-
-type BranchesStore = {
-  [repoName: string]: string[];
-};
-
-type Directory = {
-  [key: string]: Directory | string;
-};
-
-type FileDirectoryStore = {
-  [branchName: string]: Directory;
-};
+import { devtools } from "valtio/utils";
+import {
+  BranchesStore,
+  FileDirectoryStore,
+  GitProvider,
+  GitRepository,
+  RepoStore,
+} from "./types";
 
 class RepoSelectorStore {
   providers: GitProvider[] = [];
@@ -46,47 +20,59 @@ class RepoSelectorStore {
   currentRepo: GitRepository;
   currentBranch: string;
 
+  folderLocation: string = "";
+  filePath: string = "";
+  folderHasError: boolean = false;
+
   setCurrentPovider(provider: GitProvider) {
     this.currentProvider = provider;
   }
 
   get providerId() {
+    if (!this.currentProvider) {
+      return NaN;
+    }
+
     if (this.currentProvider.provider === "github") {
-      return this.currentProvider.app_id;
+      return this.currentProvider.installation_id;
     }
 
     return this.currentProvider.integration_id;
   }
 
-  async loadProviders() {
+  async loadProviders(project_id: number) {
     const { data } = await fakeApi<GitProvider[]>(providers);
 
     this.providers = data;
+    if (!this.currentProvider) {
+      this.currentProvider = data[0];
+    }
   }
 
   async loadRepositories(project_id: number) {
     try {
-      let data;
+      let data: GitRepository[];
       if (this.currentProvider.provider === "github") {
         const res = await api.getGitRepoList(
           "<token>",
           {},
-          { project_id, git_repo_id: this.currentProvider.app_id }
+          { project_id, git_repo_id: this.currentProvider.installation_id }
         );
         data = this.parseRepoList(res.data);
       } else {
         const res = await fakeApi<GitRepository[]>(gitlabRepos);
         data = res.data;
       }
-
+      console.log(this.providerId);
       this.repositories = {
-        ...this.repositories,
+        ...cloneDeep(this.repositories),
         [this.providerId]: data,
       };
+      console.log(this.repositories);
     } catch (error) {}
   }
 
-  async getBranches(project_id: number) {
+  async loadBranches(project_id: number) {
     try {
       const [owner, name] = this.currentRepo.name.split("/");
 
@@ -104,7 +90,7 @@ class RepoSelectorStore {
 
       this.branches = {
         ...this.branches,
-        [this.currentRepo.name]: branches,
+        [this.currentRepo.name]: ["something", "something-else"],
       };
     } catch (error) {}
   }
@@ -116,25 +102,11 @@ class RepoSelectorStore {
     })) as GitRepository[];
   }
 
-  async getContent(path: string): Promise<Directory | string> {
-    const objectPath = path.replace("/", ".");
-    const fileContent = _.get(this.files[this.currentBranch], objectPath);
-
-    // If not present go and get the content from the api and parse it
-    if (!fileContent) {
-      const content = await fakeContentApi(path);
-      this.parseContent(path, content);
-      return this.getContent(path);
-    }
-
-    return fileContent;
-  }
-
-  private parseContent = (
+  private parseContent(
     path: string,
     content: { path: string; type: "file" | "dir" }[]
-  ) => {
-    const parsedContent = content.reduce((acc, current) => {
+  ) {
+    const parsedContent: any = content.reduce((acc, current) => {
       const fileName = current.path.replace(path + "/", "");
       if (current.type === "file") {
         return {
@@ -147,27 +119,115 @@ class RepoSelectorStore {
         [fileName]: {},
       };
     }, {});
-
-    const objectPath = path.replace("/", ".");
-
+    const tmpPath = path;
+    const objectPath = tmpPath.replace("/", ".");
     if (path === "./") {
-      this.files[this.currentBranch] = parsedContent;
+      this.files = {
+        ...this.files,
+        [this.currentBranch]: parsedContent,
+      };
     } else {
-      let safeCopyofStore = { ...this.files[this.currentBranch] };
-      _.set(safeCopyofStore, objectPath, parsedContent);
+      let safeCopyofStore = cloneDeep(this.files[this.currentBranch]);
+      set(safeCopyofStore, objectPath, parsedContent);
 
       this.files[this.currentBranch] = safeCopyofStore;
     }
-  };
+    return;
+  }
+
+  async initFolder() {
+    const { data: newContent } = await fakeContentApi("./");
+    this.parseContent("./", newContent);
+  }
+
+  private getFolderStatus(newPath: string) {
+    const path = this.folderLocation;
+    const files = this.files[this.currentBranch];
+    const folder = path === "" ? files : get(files, path.replace("/", "."));
+    if (typeof folder === "string") {
+      return {
+        isFolder: false,
+      };
+    }
+
+    const file = folder[newPath];
+
+    if (typeof file === "string") {
+      return {
+        isFolder: false,
+      };
+    }
+
+    return {
+      isFolder: true,
+      hasContent: !isEmpty(file),
+    };
+  }
+
+  selectPath(newPath: string) {
+    this.folderHasError = false;
+    if (newPath === "..") {
+      const [, ...path] = this.folderLocation.split("/").reverse();
+      const prevPath = path.reverse().join("/");
+      this.folderLocation = prevPath;
+      console.log(prevPath);
+      return;
+    }
+
+    const folderStatus = this.getFolderStatus(newPath);
+
+    if (folderStatus.isFolder) {
+      let newFolderLocation = newPath;
+      if (this.folderLocation.length) {
+        newFolderLocation = this.folderLocation + "/" + newPath;
+      }
+      if (!folderStatus.hasContent) {
+        this.loadContent(newFolderLocation);
+      }
+      this.folderLocation = newFolderLocation;
+    } else {
+      this.filePath = this.folderLocation + "/" + newPath;
+    }
+  }
+
+  async loadContent(folderLocation: string) {
+    try {
+      const { data: newContent } = await fakeContentApi(folderLocation);
+      this.parseContent(folderLocation, newContent);
+    } catch (error) {
+      this.folderHasError = true;
+    }
+  }
+
+  get filesOnFolder() {
+    const files = this.files[this.currentBranch];
+    if (this.folderLocation === "") {
+      return files;
+    }
+
+    const path = this.folderLocation.replace("/", ".");
+    return get(files, path);
+  }
+
+  clear() {
+    this.providers = [];
+    this.repositories = {};
+    this.branches = {};
+    this.files = {};
+
+    this.currentProvider = null;
+    this.currentRepo = null;
+    this.currentBranch = "";
+
+    this.folderLocation = "";
+    this.filePath = "";
+    this.folderHasError = false;
+  }
 }
 
-const store = proxy(new RepoSelectorStore());
+export type RepoSelectorStoreType = RepoSelectorStore;
 
-const index = () => {
-  return <></>;
-};
-
-export default index;
+export const RepoStoreProvider = proxy(new RepoSelectorStore());
 
 const fakeApi = <T extends any>(data: T) =>
   new Promise<{ data: T }>((res) => setTimeout(res, 800, { data }));
@@ -176,7 +236,7 @@ const providers: GitProvider[] = [
   {
     provider: "github",
     name: "OrganizationName",
-    app_id: 12390312,
+    installation_id: 12390312,
   },
   {
     provider: "gitlab",
@@ -205,7 +265,7 @@ const gitlabRepos: GitRepository[] = [
 ];
 
 const fakeContentApi = (path: string) =>
-  new Promise<{ path: string; type: "file" | "dir" }[]>((res) => {
+  new Promise<{ data: { path: string; type: "file" | "dir" }[] }>((res) => {
     setTimeout(res, 800, { data: contentMocks[path] });
   });
 
