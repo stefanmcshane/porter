@@ -41,7 +41,11 @@ class RepoSelectorStore {
   }
 
   async loadProviders(project_id: number) {
-    const { data } = await fakeApi<GitProvider[]>(providers);
+    const { data } = await api.getGitProviders<GitProvider[]>(
+      "<token>",
+      {},
+      { project_id }
+    );
 
     this.providers = data;
     if (!this.currentProvider) {
@@ -60,37 +64,57 @@ class RepoSelectorStore {
         );
         data = this.parseRepoList(res.data);
       } else {
-        const res = await fakeApi<GitRepository[]>(gitlabRepos);
-        data = res.data;
+        const res = await api.getGitlabRepos<string[]>(
+          "<token>",
+          {},
+          { project_id, integration_id: this.providerId }
+        );
+        data = res.data.map((repo) => ({ name: repo, kind: "gitlab" }));
       }
-      console.log(this.providerId);
+
       this.repositories = {
         ...cloneDeep(this.repositories),
         [this.providerId]: data,
       };
-      console.log(this.repositories);
-    } catch (error) {}
+    } catch (error) {
+      throw error;
+    }
   }
 
   async loadBranches(project_id: number) {
     try {
       const [owner, name] = this.currentRepo.name.split("/");
-
-      const { data: branches } = await api.getBranches(
-        "<token>",
-        {},
-        {
-          project_id,
-          git_repo_id: this.providerId,
-          kind: "github",
-          owner,
-          name,
-        }
-      );
+      let data: string[];
+      if (this.currentProvider.provider === "github") {
+        const { data: branches } = await api.getBranches(
+          "<token>",
+          {},
+          {
+            project_id,
+            git_repo_id: this.providerId,
+            kind: "github",
+            owner,
+            name,
+          }
+        );
+        data = branches;
+      } else {
+        const { data: branches } = await api.getGitlabBranches(
+          "<token>",
+          {},
+          {
+            project_id,
+            integration_id: this.providerId,
+            repo_owner: owner,
+            repo_name: name,
+          }
+        );
+        data = branches;
+      }
 
       this.branches = {
         ...this.branches,
-        [this.currentRepo.name]: ["something", "something-else"],
+        [this.currentRepo.name]: data || [],
       };
     } catch (error) {}
   }
@@ -135,8 +159,24 @@ class RepoSelectorStore {
     return;
   }
 
+  private async getContent(dir: string) {
+    const [owner, name] = this.currentRepo.name.split("/");
+
+    return api.getGitlabFolderContent(
+      "<token>",
+      { dir },
+      {
+        project_id: 1,
+        integration_id: this.providerId,
+        branch: this.currentBranch,
+        repo_name: name,
+        repo_owner: owner,
+      }
+    );
+  }
+
   async initFolder() {
-    const { data: newContent } = await fakeContentApi("./");
+    const { data: newContent } = await this.getContent("./");
     this.parseContent("./", newContent);
   }
 
@@ -192,7 +232,7 @@ class RepoSelectorStore {
 
   async loadContent(folderLocation: string) {
     try {
-      const { data: newContent } = await fakeContentApi(folderLocation);
+      const { data: newContent } = await this.getContent(folderLocation);
       this.parseContent(folderLocation, newContent);
     } catch (error) {
       this.folderHasError = true;

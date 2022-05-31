@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+import { ActionConfigType } from "shared/types";
 import styled from "styled-components";
 import { useSnapshot } from "valtio";
 import { derive, devtools } from "valtio/utils";
@@ -32,7 +33,11 @@ const StepStore = derive({
   current_step: (get) => getStep(get(RepoStoreProvider)),
 });
 
-const Index = () => {
+type Props = {
+  onChange?: (actionConfig: ActionConfigType) => void;
+};
+
+const Index = (props: Props) => {
   const store = useSnapshot(StepStore);
 
   const { current_step } = store;
@@ -42,6 +47,8 @@ const Index = () => {
       RepoStoreProvider.clear();
     };
   }, []);
+
+  useEffect(() => {}, [current_step]);
 
   switch (current_step) {
     case ACTION_CONFIG_FORM_STEPS.SELECT_REPO:
